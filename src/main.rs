@@ -28,6 +28,7 @@ async fn main() {
     bot.add_command(commands::config::Config);
     bot.add_command(commands::different_dimension_me::DifferentDimensionMe);
     bot.add_command(commands::makersuite::GoogleGemini);
+    bot.add_command(commands::makersuite::GoogleGeminiFlash);
     bot.add_command(commands::makersuite::GooglePalm);
     bot.add_command(commands::groq::Llama);
     bot.add_command(commands::translate::Translate);

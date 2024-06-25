@@ -11,9 +11,9 @@ nursery = "warn"
 async-signal = "0.2"
 async-trait = "0.1"
 base64 = "0.22"
-bytes = "1.4"
+bytes = "1.6"
 charname = "0.2"
-colored = "2.0"
+colored = "2.1"
 counter = "0.5"
 dotenvy = "0.15"
 futures-util = "0.3"
@@ -23,12 +23,12 @@ markov-chain = { git = "https://github.com/JelNiSlaw/markov-chain" }
 md5 = "0.7"
 oneshot = "0.1"
 rand = "0.9.0-alpha"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-rmp-serde = "1.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
+rmp-serde = "1.3"
 serde = "1.0"
 serde_json = "1.0"
 tdlib = { git = "https://github.com/JelNiSlaw/tdlib-rs-latest" }
-tempfile = "3.4"
+tempfile = "3.10"
 time = { version = "0.3", features = ["macros", "serde", "serde-well-known"] }
-tokio = { version = "1.37", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1.38", features = ["macros", "rt-multi-thread", "signal", "time"] }
 url = "2.3"

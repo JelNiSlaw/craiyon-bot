@@ -153,12 +153,144 @@ impl CommandTrait for GoogleGemini {
     }
 }
 
+pub struct GoogleGeminiFlash;
+
+#[async_trait]
+impl CommandTrait for GoogleGeminiFlash {
+    fn command_names(&self) -> &[&str] {
+        &["geminiflash", "flash", "f"]
+    }
+
+    fn description(&self) -> Option<&'static str> {
+        Some("ask Gemini Flash")
+    }
+
+    fn rate_limit(&self) -> RateLimiter<i64> {
+        RateLimiter::new(3, 45)
+    }
+
+    async fn execute(&self, ctx: &CommandContext, arguments: String) -> CommandResult {
+        let prompt = Option::<StringGreedyOrReply>::convert(ctx, &arguments).await?.0;
+
+        ctx.send_typing().await?;
+
+        let mut model = "gemini-1.5-flash-latest";
+        let mut parts = Vec::new();
+
+        if let Some(prompt) = prompt {
+            parts.push(Part::Text(prompt.0));
+        }
+
+        if let Some(media) =
+            telegram_utils::get_message_or_reply_media(&ctx.message, ctx.client_id).await
+        {
+            // if file.expected_size > 10 * MEBIBYTE {
+            //     return Err(CommandError::Custom("the media cannot be larger than 10 MiB.".into()));
+            // }
+
+            model = "gemini-1.0-pro-vision-latest";
+
+            let File::File(file) =
+                functions::download_file(media.file.id, 1, 0, 0, true, ctx.client_id)
+                    .await?;
+
+            let file = fs::read(file.local.path).unwrap();
+
+            parts.push(Part::InlineData(Blob {
+                mime_type: media.mime_type,
+                data: STANDARD.encode(file),
+            }));
+        }
+
+        if parts.is_empty() {
+            return Err(CommandError::Custom("no prompt or media provided.".into()));
+        }
+
+        let http_client = ctx.bot_state.http_client.clone();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+
+        tokio::spawn(async move {
+            makersuite::stream_generate_content(http_client, tx, model, &parts, 512).await;
+        });
+
+        let mut next_update = Instant::now() + Duration::from_secs(5);
+        let mut changed_after_last_update = false;
+        let mut progress = Option::<GenerationProgress>::None;
+        let mut message = Option::<Message>::None;
+
+        loop {
+            let (update_message, finished) = if let Ok(response) =
+                tokio::time::timeout_at(next_update, rx.recv()).await
+            {
+                match response {
+                    Some(response) => {
+                        let response = response?;
+
+                        match progress.as_mut() {
+                            Some(progress) => {
+                                progress.update(response)?;
+                                changed_after_last_update = true;
+                            }
+                            None => {
+                                if let Some(candidate) = response.candidates.into_iter().next() {
+                                    progress = Some(GenerationProgress::new(candidate));
+                                    changed_after_last_update = true;
+                                }
+                            }
+                        }
+
+                        (false, false)
+                    }
+                    None => (true, true),
+                }
+            } else {
+                next_update = Instant::now() + Duration::from_secs(5);
+                (true, false)
+            };
+
+            if update_message && changed_after_last_update {
+                let text = match progress.as_ref() {
+                    Some(progress) => progress.format(finished),
+                    None => {
+                        continue;
+                    }
+                };
+
+                let enums::FormattedText::FormattedText(formatted_text) =
+                    functions::parse_markdown(
+                        FormattedText { text, ..Default::default() },
+                        ctx.client_id,
+                    )
+                    .await?;
+
+                if let Some(message) = message.as_ref() {
+                    ctx.edit_message_formatted_text(message.id, formatted_text).await?;
+                } else {
+                    let unsent_message = ctx.reply_formatted_text(formatted_text).await?;
+                    message = Some(
+                        ctx.bot_state.message_queue.wait_for_message(unsent_message.id).await?,
+                    );
+                }
+
+                next_update = Instant::now() + Duration::from_secs(5);
+                changed_after_last_update = false;
+            }
+
+            if finished {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 pub struct GooglePalm;
 
 #[async_trait]
 impl CommandTrait for GooglePalm {
     fn command_names(&self) -> &[&str] {
-        &["palm", "palm2"]
+        &["palm", "palm2", "p"]
     }
 
     fn description(&self) -> Option<&'static str> {

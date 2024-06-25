@@ -1,11 +1,18 @@
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use tempfile::TempPath;
+use tokio::fs::File;
 
 use crate::commands::CommandError;
 use crate::utilities::api_utils::DetectServerError;
 
+#[derive(Deserialize)]
+pub struct TranscriptionResponse {
+    pub text: String,
+}
+
 #[derive(Serialize)]
-struct Request<'a> {
+struct ChatRequest<'a> {
     model: &'static str,
     messages: &'a [Message<'a>],
     max_tokens: u16,
@@ -54,13 +61,46 @@ pub async fn chat_completion(
     let response = http_client
         .post(format!("{base_url}/chat/completions"))
         .bearer_auth(api_key)
-        .json(&Request { model, messages, max_tokens: 256 })
+        .json(&ChatRequest { model, messages, max_tokens: 256 })
         .send()
         .await?
         .server_error()?;
 
     if response.status() == StatusCode::OK {
         let response = response.json::<ChatCompletion>().await?;
+        Ok(Ok(response))
+    } else {
+        let response = response.json::<ErrorResponse>().await?;
+        Ok(Err(response.error))
+    }
+}
+
+pub async fn transcription(
+    http_client: reqwest::Client,
+    base_url: &str,
+    api_key: &str,
+    audio: TempPath,
+) -> Result<Result<TranscriptionResponse, Error>, CommandError> {
+    // Create multipart request
+    let part = reqwest::multipart::Part::bytes(tokio::fs::read(audio).await.unwrap())
+        .file_name("audio.ogg") // TODO: infer from audio path
+        .mime_str("audio/ogg")
+        .unwrap();
+    let form = reqwest::multipart::Form::new()
+        .text("model", "whisper-large-v3")
+        .text("response_format", "json")
+        .part("file", part);
+
+    let response = http_client
+        .post(format!("{base_url}/audio/transcriptions"))
+        .bearer_auth(api_key)
+        .multipart(form)
+        .send()
+        .await?
+        .server_error()?;
+
+    if response.status() == StatusCode::OK {
+        let response = response.json::<TranscriptionResponse>().await?;
         Ok(Ok(response))
     } else {
         let response = response.json::<ErrorResponse>().await?;
