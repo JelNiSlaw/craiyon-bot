@@ -11,7 +11,7 @@ pub struct Joke {
 
 pub async fn joke(http_client: reqwest::Client) -> Result<Joke, CommandError> {
     let joke = http_client
-        .get("https://moveit.ducky.pics/json")
+        .get("https://qdpnjkjlql.execute-api.eu-central-1.amazonaws.com/json")
         .send()
         .await?
         .server_error()?
